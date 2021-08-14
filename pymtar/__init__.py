@@ -27,7 +27,7 @@ class db(SH):
 			DBCol('gen', 'text'), # Generation (eg, "LTO8RW")
 			DBCol('sn', 'text'), # Serial number on cartridge
 			DBCol('barcode', 'text'), # Standard LTO barcode, null if not used
-			DBCol('ptime', 'datetime') # Purchase date and time
+			DBCol('ptime', 'date') # Purchase date and time
 		),
 		# A tape "file" equivalent to a tar file
 		DBTable('tar',
