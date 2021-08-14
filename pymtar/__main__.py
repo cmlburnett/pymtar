@@ -24,12 +24,31 @@ def dateYYYYMMDDHHMMSS(v):
 		return datetime.datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
 
 class actions:
+	"""
+	Actions performed by the command line.
+	This utilizes the pymtar.db class to interact with the database.
+	"""
+
 	@classmethod
 	def _db_open(kls, args):
 		db = pymtar.db(os.path.join(os.getcwd(), args.db))
 		db.open()
 
 		return db
+
+	# -------------------------------------------------------------------------
+	# -------------------------------------------------------------------------
+	@classmethod
+	def action(kls, args):
+		acts = {}
+		acts['find'] = kls.action_find
+		acts['list'] = kls.action_list
+		acts['new'] = kls.action_new
+
+		if args.action[0] in acts:
+			acts[ args.action[0] ](args)
+		else:
+			raise PrintHelpException("Action '%s' not recognized" % args.action[0])
 
 	# -------------------------------------------------------------------------
 	# -------------------------------------------------------------------------
@@ -46,21 +65,13 @@ class actions:
 
 	@classmethod
 	def action_find_tape_barcode(kls, args, bcode):
-		print('find tape barcode', bcode)
-
 		db = kls._db_open(args)
-		res = db.tape.select('*', 'barcode=?', [bcode])
-		rows = res.fetchall()
-		print(rows)
+		print(db.find_tape_by_barcode(bcode))
 
 	@classmethod
 	def action_find_tape_sn(kls, args, sn):
-		print('find tape sn', sn)
-
 		db = kls._db_open(args)
-		res = db.tape.select('*', 'sn=?', [sn])
-		rows = res.fetchall()
-		print(rows)
+		print(db.find_tape_by_sn(sn))
 
 
 	# -------------------------------------------------------------------------
@@ -73,6 +84,9 @@ class actions:
 		elif args.action[1] == 'tars':
 			kls.action_list_tars(args, args.action[2:])
 
+		elif args.action[1] == 'files':
+			kls.action_list_tarfiles(args, args.action[2:])
+
 		else:
 			raise PrintHelpException("Unrecognized list command: %s" % args.action[1])
 
@@ -82,9 +96,8 @@ class actions:
 			raise PrintHelpException("No parameters are accepted for list tapes")
 
 		db = kls._db_open(args)
-		res = db.tape.select('*')
-		for row in res:
-			row = dict(row)
+		rows = db.find_tapes()
+		for row in rows:
 			print(row)
 
 	@classmethod
@@ -96,22 +109,28 @@ class actions:
 
 		# No filtering
 		if not len(vals):
-			res = db.tar.select('*')
-			for row in res:
-				row = dict(row)
-				print(row)
+			rows = db.find_tars()
 		else:
 			if 'tape' in vals:
-				res = db.tape.select('rowid', 'rowid=? or sn=? or barcode=?', [vals['tape'], vals['tape'], vals['tape']])
-				rows = res.fetchall()
-				if not len(rows):
+				rows = db.find_tars_by_tape_multi(vals['tape'])
+
+				if rows is None:
 					raise PrintHelpException("Tape with rowid, serial number, or barcode '%s' not found" % vals['tape'])
-				res = db.tar.select('*', 'id_tape=?', [rows[0]['rowid']])
-				for row in res:
-					print(dict(row))
 
 			else:
 				raise PrintHelpException("Unsupported filter for tar listing: %s" % str(vals))
+
+		for row in rows:
+			print(row)
+
+	@classmethod
+	def action_list_tarfiles(kls, args, vals):
+		# Split ['foo=bar', 'baz=bat'] into [['foo','bar'], ['baz','bat']]
+		vals = dict([_.split('=',1) for _ in vals])
+
+		db = kls._db_open(args)
+
+		raise NotImplementedError
 
 	# -------------------------------------------------------------------------
 	# -------------------------------------------------------------------------
@@ -147,21 +166,13 @@ class actions:
 
 		# Check that there's not tape already
 		db = kls._db_open(args)
-		res = db.tape.select('rowid', 'sn=?', [vals['sn']])
-		rows = res.fetchall()
-		if len(rows):
-			raise PrintHelpException("Tape with serial number '%s' already exists: rowid=%d" % (vals['sn'], rows[0]['rowid']))
+		try:
+			return db.new_tape(**vals)
+		except ItemExists as e:
+			raise PrintHelpException(str(e))
+		except ItemNotFound as e:
+			raise PrintHelpException(str(e))
 
-		if 'barcode' in vals and vals['barcode'] is not None:
-			res = db.tape.select('rowid', 'barcode=?', [vals['barcode']])
-			rows = res.fetchall()
-			if len(rows):
-				raise PrintHelpException("Tape with barcode '%s' already exists: rowid=%d" % (vals['barcode'], rows[0]['rowid']))
-
-		db.begin()
-		ret = db.tape.insert(**vals)
-		db.commit()
-		return ret
 
 	@classmethod
 	def action_new_tar(kls, args, vals):
@@ -184,29 +195,12 @@ class actions:
 		# TODO: invoke `uname -a` if vals['uname'] is None
 
 		db = kls._db_open(args)
-
-		# Translate what is provided to tape.rowid
-		res = db.tape.select('rowid', 'rowid=? or sn=? or barcode=?', [vals['tape'], vals['tape'], vals['tape']])
-		rows = res.fetchall()
-		if not len(rows):
-			raise PrintHelpException("Cannot create tar, tape with rowid, serial number, or barcode '%s' not found" % vals['tape'])
-
-		id_tape = rows[0]['rowid']
-
-		# Check that tar file doesn't already exist
-		res = db.tar.select('rowid', 'id_tape=? and num=?', [id_tape, vals['num']])
-		rows = res.fetchall()
-		if len(rows):
-			raise PrintHelpException("Cannot create tar as one with number %d already exists for tape '%s' (rowid=%d)" % (vals['num'], vals['tape'], id_tape))
-
-		# Fix tape id
-		del vals['tape']
-		vals['id_tape'] = id_tape
-
-		db.begin()
-		ret = db.tar.insert(**vals)
-		db.commit()
-		return ret
+		try:
+			return db.new_tar(**vals)
+		except ItemExists as e:
+			raise PrintHelpException(str(e))
+		except ItemNotFound as e:
+			raise PrintHelpException(str(e))
 
 
 	@classmethod
@@ -228,39 +222,25 @@ class actions:
 
 		db = kls._db_open(args)
 
-		# Translate what is provided to tape.rowid
-		res = db.tape.select('rowid', 'rowid=? or sn=? or barcode=?', [vals['tape'], vals['tape'], vals['tape']])
-		rows = res.fetchall()
-		if not len(rows):
-			raise PrintHelpException("Cannot create tar file, tape with rowid, serial number, or barcode '%s' not found" % vals['tape'])
-
-		id_tape = rows[0]['rowid']
-
-
-		# Translate what is provided to tar.rowid
-		res = db.tar.select('rowid', 'id_tape=? and num=?', [id_tape, vals['tar']])
-		rows = res.fetchall()
-		if not len(rows):
-			raise PrintHelpException("Cannot create tar file, tar num %d not found for tape '%s' (rowid=%d)" % (vals['tar'], vals['tape'], id_tape))
-
-		id_tar = rows[0]['rowid']
-
-
-		# Fix tape and tar id's
-		del vals['tape']
-		del vals['tar']
-		vals['id_tape'] = id_tape
-		vals['id_tar'] = id_tar
-
-		db.begin()
-		ret = db.tarfile.insert(**vals)
-		db.commit()
-		return ret
-
+		try:
+			return db.new_tarfile(**vals)
+		except ItemExists as e:
+			raise PrintHelpException(str(e))
+		except ItemNotFound as e:
+			raise PrintHelpException(str(e))
 
 
 
 class DataArgsParser:
+	"""
+	Accepts a key=value items from the command line, validates the type, and makes a dictionary.
+		vals = ["model=monkey", "serial=10"]
+		vals = dict([_.split('=',1) for _ in vals])
+		p = DataArgsParser(name) # Name is something useful when throwing exceptions
+		p.add('model', str, required=True, default="ACME")
+		p.add('serial', int, required=True)
+		vals = p.check(vals)
+	"""
 	def __init__(self, name):
 		self.name = name
 		self.parms = []
@@ -304,6 +284,7 @@ class DataArgsParser:
 
 		return vals
 
+
 def main():
 	p = argparse.ArgumentParser(add_help=False)
 	p.add_argument('-h', '--help', action='store_true', default=False, help='Show usage information')
@@ -312,16 +293,18 @@ def main():
 	p.add_argument('-d', '--db', nargs='?', required=True, help="Database file to use, will be created if not found")
 	p.add_argument('action', nargs=argparse.REMAINDER, help='Action/command to execute')
 
-	acts = {}
-	acts['find'] = actions.action_find
-	acts['list'] = actions.action_list
-	acts['new'] = actions.action_new
 
 	action_help = """
   Actions help:
     find tape.barcode   Find tapes by barcode
     find tape.sn        Find tapes by serial number
     list tapes          List all tapes
+    list tars           List all tars
+                            tape          Tape rowid, serial number, or barcode to limit search by
+    list files          List all files
+                            tape          Tape rowid, serial number, or barcode to limit search by
+                            tar           Tar rowid to limit search by
+                            tarnum        Tar num to limit search by
     new tape            Create a new tape record
                             manufacturer  Manufacturer of the cartridge
                             model         Model number of catridge
@@ -355,21 +338,13 @@ def main():
 		sys.exit(2)
 
 	try:
-		if args.action[0] in acts:
-			acts[ args.action[0] ](args)
+		return actions.action(args)
 	except PrintHelpException as e:
 		p.print_help()
 		print(action_help)
 
 		print("Error: %s" % str(e))
 		sys.exit(2)
-	return
-
-	mt = pymtar.mt(sys.argv[1])
-
-	r = mt.status()
-	print(r)
-	print(r)
 
 if __name__ == '__main__':
 	main()

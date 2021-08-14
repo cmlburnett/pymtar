@@ -16,6 +16,9 @@ import sqlite3
 # My installed libraries
 from sqlitehelper import SH, DBTable, DBCol, DBColROWID
 
+class ItemExists(Exception): pass
+class ItemNotFound(Exception): pass
+
 class db(SH):
 	"""DB schema"""
 
@@ -69,6 +72,101 @@ class db(SH):
 	def _now():
 		return datetime.datetime.utcnow()
 
+	# -------------------------------------------------------------------------
+	# -------------------------------------------------------------------------
+	# Tapes
+
+	def find_tapes(self):
+		res = self.tape.select('*')
+		return [dict(_) for _ in res]
+
+	def find_tape_by_id(self, rowid):
+		res = self.tape.select('*', 'rowid=?', [rowid])
+		return [dict(_) for _ in res]
+
+	def find_tape_by_sn(self, sn):
+		res = self.tape.select('*', 'sn=?', [sn])
+		return [dict(_) for _ in res]
+
+	def find_tape_by_barcode(self, bcode):
+		res = self.tape.select('*', 'barcode=?', [bcode])
+		return [dict(_) for _ in res]
+
+	def find_tape_by_multi(self, val):
+		res = self.tape.select('*', 'rowid=? or sn=? or barcode=?', [val,val,val])
+		return [dict(_) for _ in res]
+
+	def new_tape(self, manufacturer, model, gen, sn, barcode, ptime):
+		rows = self.find_tape_by_sn(sn)
+		if len(rows):
+			raise ItemExists("Tape with serial number '%s' already exists, cannot add it again" % sn)
+
+		if barcode is not None:
+			rows = self.find_tape_by_barcode(barcode)
+			if len(rows):
+				raise ItemExists("Tape with barcode '%s' already exists, cannot add it again" % barcode)
+
+		# TODO: validate gen
+		# TODO: validate ptime
+
+		self.begin()
+		ret = self.tape.insert(manufacturer=manufacturer, model=model, gen=gen, sn=sn, barcode=barcode, ptime=ptime)
+		self.commit()
+		return ret
+
+	# -------------------------------------------------------------------------
+	# -------------------------------------------------------------------------
+	# Tars
+
+	def find_tars(self):
+		res = self.tar.select('*')
+		return [dict(_) for _ in res]
+
+	def find_tars_by_tape_multi(self, val):
+		rows = self.find_tape_by_multi(val)
+		if not len(rows):
+			return None
+
+		res = self.tar.select('*', 'id_tape=?', [rows[0]['rowid']])
+		return [dict(_) for _ in res]
+
+	def new_tar(self, tape, num, stime, etime, access_cnt, blk_offset, options, uname):
+		rows = self.find_tape_by_multi(tape)
+		if not len(rows):
+			raise ItemNotFound("Unable to find tape with rowid, serial number, or barcode '%s', cannot create tar" % tape)
+
+		id_tape = rows[0]['rowid']
+
+		rows = self.tar.select('rowid', 'id_tape=? and num=?', [id_tape, num])
+		if len(rows):
+			raise ItemExists("Tar file num %d with tape '%s' (rowid=%d) already exists, cannot add it again" % (num, tape, id_tape))
+
+		self.begin()
+		ret = self.tar.insert(id_tape=id_tape, num=num, stime=stime, etime=etime, access_cnt=access_cnt, blk_offset=blk_offset, options=options, uname=uname)
+		self.commit()
+		return ret
+
+	# -------------------------------------------------------------------------
+	# -------------------------------------------------------------------------
+	# Tar files
+
+	def new_tarfile(self, tape, tar, fullpath, relpath, fname, sz, sha256):
+		rows = self.find_tape_by_multi(tape)
+		if not len(rows):
+			raise ItemNotFound("Unable to find tape with rowid, serial number, or barcode '%s', cannot create tar" % tape)
+
+		id_tape = rows[0]['rowid']
+
+		rows = self.tar.select('rowid', 'id_tape=? and num=?', [id_tape, num])
+		if not len(rows):
+			raise ItemNotFound("Unable to find tar with num %d for tape '%s' (rowid=%d), cannot add tar file" % (num, tape, id_tape))
+
+		id_tar = rows[0]['rowid']
+
+		self.begin()
+		ret = self.tarfile.insert(id_tape=id_tape, id_tar=id_tar, fullpath=fullpath, relpath=relpath, fname=fname, sz=sz, sha256=sha256)
+		self.commit()
+		return ret
 
 
 class mt:
