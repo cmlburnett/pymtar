@@ -12,8 +12,6 @@ class PrintHelpException(Exception): pass
 class actions:
 	@classmethod
 	def action_find(kls, args):
-		print('find', args)
-
 		if args.action[1] == 'tape.barcode':
 			kls.action_find_tape_barcode(args, args.action[2])
 
@@ -62,7 +60,6 @@ def main():
 		p.print_help()
 		print(action_help)
 		sys.exit(2)
-	print(args)
 
 	try:
 		if args.action[0] in acts:
