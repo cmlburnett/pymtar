@@ -189,7 +189,7 @@ class actions:
 		res = db.tape.select('rowid', 'rowid=? or sn=? or barcode=?', [vals['tape'], vals['tape'], vals['tape']])
 		rows = res.fetchall()
 		if not len(rows):
-			raise PrintHelpException("Cannot create tar file, tape with rowid, serial number, or barcode '%s' not found" % vals['tape'])
+			raise PrintHelpException("Cannot create tar, tape with rowid, serial number, or barcode '%s' not found" % vals['tape'])
 
 		id_tape = rows[0]['rowid']
 
@@ -197,7 +197,7 @@ class actions:
 		res = db.tar.select('rowid', 'id_tape=? and num=?', [id_tape, vals['num']])
 		rows = res.fetchall()
 		if len(rows):
-			raise PrintHelpException("Cannot create tar file as one with number %d already exists for tape '%s' (rowid=%d)" % (vals['num'], vals['tape'], id_tape))
+			raise PrintHelpException("Cannot create tar as one with number %d already exists for tape '%s' (rowid=%d)" % (vals['num'], vals['tape'], id_tape))
 
 		# Fix tape id
 		del vals['tape']
@@ -219,16 +219,44 @@ class actions:
 		p.add('tape', str, required=True)
 		p.add('tar', int, required=True)
 		p.add('fullpath', str, required=True)
+		p.add('relpath', str, required=True)
 		p.add('fname', str, required=True)
 		p.add('sz', int, required=True)
 		p.add('sha256', str, required=True)
 
 		vals = p.check(vals)
-		print(vals)
 
-		# Check that there's not tar file already
-		# insert into database
-		raise NotImplementedError
+		db = kls._db_open(args)
+
+		# Translate what is provided to tape.rowid
+		res = db.tape.select('rowid', 'rowid=? or sn=? or barcode=?', [vals['tape'], vals['tape'], vals['tape']])
+		rows = res.fetchall()
+		if not len(rows):
+			raise PrintHelpException("Cannot create tar file, tape with rowid, serial number, or barcode '%s' not found" % vals['tape'])
+
+		id_tape = rows[0]['rowid']
+
+
+		# Translate what is provided to tar.rowid
+		res = db.tar.select('rowid', 'id_tape=? and num=?', [id_tape, vals['tar']])
+		rows = res.fetchall()
+		if not len(rows):
+			raise PrintHelpException("Cannot create tar file, tar num %d not found for tape '%s' (rowid=%d)" % (vals['tar'], vals['tape'], id_tape))
+
+		id_tar = rows[0]['rowid']
+
+
+		# Fix tape and tar id's
+		del vals['tape']
+		del vals['tar']
+		vals['id_tape'] = id_tape
+		vals['id_tar'] = id_tar
+
+		db.begin()
+		ret = db.tarfile.insert(**vals)
+		db.commit()
+		return ret
+
 
 
 
