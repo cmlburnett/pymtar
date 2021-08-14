@@ -170,7 +170,16 @@ class db(SH):
 
 
 class mt:
+	"""
+	Wrapper class to the command line tool mt(1) that provides tape control function.
+	"""
+
 	def __init__(self, dev):
+		"""
+		mt(1) wrapper for command-line manipulation of a tape drive.
+		@dev is the device file used to manipulate the drive.
+		"""
+
 		dev = os.path.abspath(dev)
 
 		parts = os.path.split(dev)
@@ -191,6 +200,14 @@ class mt:
 		return r.stdout.decode('ascii')
 
 	def status(self):
+		"""
+		Get status information on the tape.
+		Specifically return a tuple of (file numer, block position, partition).
+		Partition isn't used but returned anyway.
+
+		If no tape, then values are -1.
+		"""
+
 		ret = self._run('mt', '-f', self._dev, 'status')
 		lines = ret.split('\n')
 		parts = lines[1].strip('.').split(',')
@@ -203,20 +220,24 @@ class mt:
 		return (fnum, blk, part)
 
 	def rewind(self):
-		self._run('mt', '-f', self._dev, 'rewind')
+		"""Rewind tape to the beginning"""
+		self._run('mt', '-f', self._dev, 'rewind', timeout=None)
 
 	def offline(self):
-		self._run('mt', '-f', self._dev, 'offline')
+		"""aka eject"""
+		self._run('mt', '-f', self._dev, 'offline', timeout=None)
 
-	def bsf(self, cnt):
+	def bsf(self, cnt=1):
+		"""Move back one file, or @cnt if provided"""
 		if cnt is not int:
 			raise Exception("bsf: cnt parameter must be an integer, got '%s'" % cnt)
 
-		self._run('mt', '-f', self._dev, 'bsf', cnt)
+		self._run('mt', '-f', self._dev, 'bsf', cnt, timeout=None)
 
-	def fsf(self, cnt):
+	def fsf(self, cnt=1):
+		"""Move forward one file, or @cnt if provided"""
 		if cnt is not int:
 			raise Exception("fsf: cnt parameter must be an integer, got '%s'" % cnt)
 
-		self._run('mt', '-f', self._dev, 'bsf', cnt)
+		self._run('mt', '-f', self._dev, 'bsf', cnt, timeout=None)
 
