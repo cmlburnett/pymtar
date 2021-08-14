@@ -46,7 +46,8 @@ class db(SH):
 			DBColROWID(),
 			DBCol('id_tape', 'integer'), # Tape this file belongs to
 			DBCol('id_tar', 'integer'), # tar file this file belongs to
-			DBCol('fullpath', 'text'), # Full path
+			DBCol('fullpath', 'text'), # Full, absolute path
+			DBCol('relpath', 'text'), # Relative path as supplied to tar
 			DBCol('fname', 'text'), # File name
 			DBCol('sz', 'integer'), # Size of file in bytes
 			DBCol('sha256', 'text') # sha256 hash

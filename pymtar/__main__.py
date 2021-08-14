@@ -12,10 +12,16 @@ import pymtar
 class PrintHelpException(Exception): pass
 
 def dateYYYYMMDD(v):
-	return datetime.datetime.strptime(v, "%Y-%m-%d").date()
+	if v == 'now':
+		return datetime.datetime.utcnow().date()
+	else:
+		return datetime.datetime.strptime(v, "%Y-%m-%d").date()
 
 def dateYYYYMMDDHHMMSS(v):
-	return datetime.datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
+	if v == 'now':
+		return datetime.datetime.utcnow()
+	else:
+		return datetime.datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
 
 class actions:
 	@classmethod
@@ -64,16 +70,48 @@ class actions:
 		if args.action[1] == 'tapes':
 			kls.action_list_tapes(args)
 
+		elif args.action[1] == 'tars':
+			kls.action_list_tars(args, args.action[2:])
+
 		else:
 			raise PrintHelpException("Unrecognized list command: %s" % args.action[1])
 
 	@classmethod
 	def action_list_tapes(kls, args):
+		if len(args.action) != 2:
+			raise PrintHelpException("No parameters are accepted for list tapes")
+
 		db = kls._db_open(args)
 		res = db.tape.select('*')
 		for row in res:
 			row = dict(row)
 			print(row)
+
+	@classmethod
+	def action_list_tars(kls, args, vals):
+		# Split ['foo=bar', 'baz=bat'] into [['foo','bar'], ['baz','bat']]
+		vals = dict([_.split('=',1) for _ in vals])
+
+		db = kls._db_open(args)
+
+		# No filtering
+		if not len(vals):
+			res = db.tar.select('*')
+			for row in res:
+				row = dict(row)
+				print(row)
+		else:
+			if 'tape' in vals:
+				res = db.tape.select('rowid', 'rowid=? or sn=? or barcode=?', [vals['tape'], vals['tape'], vals['tape']])
+				rows = res.fetchall()
+				if not len(rows):
+					raise PrintHelpException("Tape with rowid, serial number, or barcode '%s' not found" % vals['tape'])
+				res = db.tar.select('*', 'id_tape=?', [rows[0]['rowid']])
+				for row in res:
+					print(dict(row))
+
+			else:
+				raise PrintHelpException("Unsupported filter for tar listing: %s" % str(vals))
 
 	# -------------------------------------------------------------------------
 	# -------------------------------------------------------------------------
@@ -106,7 +144,6 @@ class actions:
 		p.add('ptime', dateYYYYMMDD, required=True)
 
 		vals = p.check(vals)
-		print(vals)
 
 		# Check that there's not tape already
 		db = kls._db_open(args)
@@ -137,17 +174,40 @@ class actions:
 		p.add('num', int, required=True)
 		p.add('stime', dateYYYYMMDDHHMMSS, required=True)
 		p.add('etime', dateYYYYMMDDHHMMSS, required=True)
-		p.add('access_cnt', int, required=True)
+		p.add('access_cnt', int, required=False, default=0)
 		p.add('blk_offset', int, required=True)
 		p.add('options', str, required=False)
-		p.add('uname', str, required=True)
+		p.add('uname', str, required=False, default=None)
 
 		vals = p.check(vals)
-		print(vals)
 
-		# Check that there's not tar already
-		# insert into database
-		raise NotImplementedError
+		# TODO: invoke `uname -a` if vals['uname'] is None
+
+		db = kls._db_open(args)
+
+		# Translate what is provided to tape.rowid
+		res = db.tape.select('rowid', 'rowid=? or sn=? or barcode=?', [vals['tape'], vals['tape'], vals['tape']])
+		rows = res.fetchall()
+		if not len(rows):
+			raise PrintHelpException("Cannot create tar file, tape with rowid, serial number, or barcode '%s' not found" % vals['tape'])
+
+		id_tape = rows[0]['rowid']
+
+		# Check that tar file doesn't already exist
+		res = db.tar.select('rowid', 'id_tape=? and num=?', [id_tape, vals['num']])
+		rows = res.fetchall()
+		if len(rows):
+			raise PrintHelpException("Cannot create tar file as one with number %d already exists for tape '%s' (rowid=%d)" % (vals['num'], vals['tape'], id_tape))
+
+		# Fix tape id
+		del vals['tape']
+		vals['id_tape'] = id_tape
+
+		db.begin()
+		ret = db.tar.insert(**vals)
+		db.commit()
+		return ret
+
 
 	@classmethod
 	def action_new_tarfile(kls, args, vals):
@@ -170,22 +230,28 @@ class actions:
 		# insert into database
 		raise NotImplementedError
 
+
+
 class DataArgsParser:
 	def __init__(self, name):
 		self.name = name
 		self.parms = []
 		self.keys = []
 
-	def add(self, key, typ, *, required=False):
-		self.parms.append( {'key': key, 'type': typ, 'required': required} )
+	def add(self, key, typ, *, required=False, default=None):
+		self.parms.append( {'key': key, 'type': typ, 'required': required, 'default': default} )
 		self.keys.append(key)
 
 	def check(self, vals, set_absent_as_none=False):
 		# Check for required parameters
 		for z in self.parms:
 			if z['required']:
-				if z['key'] not in vals:
-					raise PrintHelpException("Data parameter '%s' required for %s, but not provided" % (z['key'], self.name))
+				if z['key'] in vals: continue
+
+				if 'default' in z and z['default'] is not None:
+					vals[z['key']] = z['default']
+
+				raise PrintHelpException("Data parameter '%s' required for %s, but not provided" % (z['key'], self.name))
 
 		# Check that there are no extras
 		for k,v in vals.items():
@@ -234,9 +300,24 @@ def main():
                             gen           Generation (eg, LTO8RW, LTO8WORM)
                             sn            Serial number printed on cartridge
                             barcode       Standard LTO barcode value (optional)
-                            ptime         Purchase time
+                            ptime         Purchase time (YYYY-MM-DD)
     new tar             Create a new tar file
+                            tape          Tape rowid, serial number, or barcode
+                            num           File number on the cartridge
+                            stime         Start time of write (YYYY-MM-DD HH:MM:SS)
+                            etime         End time of write (YYYY-MM-DD HH:MM:SS)
+                            access_cnt    Access count (optional, default is zero)
+                            blk_offset    Block offset of the file on the cartridge
+                            options       Options passed to tar (eg, '-z')
+                            uname         Value of `uname -a` (optional, uname invoked if not provided)
     new file            Create a new file within a tar file
+                            tape          Tape rowid, serial number, or barcode
+                            tar           Tar rowid or tar.num on this cartridge
+                            fullpath      Absolute path of file on host system
+                            relpath       Relative path supplied to tar as stored in the tar
+                            fname         File name (no directory path included)
+                            sz            File size in bytes
+                            sha256        SHA256 hash of the file
 """
 
 	args = p.parse_args()
