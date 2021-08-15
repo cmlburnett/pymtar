@@ -72,7 +72,7 @@ def main():
 
 	try:
 		return pymtar.actions.action(args)
-	except PrintHelpException as e:
+	except pymtar.PrintHelpException as e:
 		p.print_help()
 		print(action_help)
 

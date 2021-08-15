@@ -480,7 +480,7 @@ class actions:
 		p.add('barcode', str, required=False)
 		p.add('ptime', dateYYYYMMDD, required=True)
 
-		vals = p.check(vals)
+		vals = p.check(vals, set_absent_as_none=True)
 
 		# Check that there's not tape already
 		d = kls._db_open(args)
@@ -507,7 +507,7 @@ class actions:
 		p.add('options', str, required=False)
 		p.add('uname', str, required=False, default=None)
 
-		vals = p.check(vals)
+		vals = p.check(vals, set_absent_as_none=True)
 
 		# TODO: invoke `uname -a` if vals['uname'] is None
 
@@ -560,7 +560,7 @@ class actions:
 		p.add('tape', str, required=True)
 		p.add('tar', int, required=True)
 		p.add('basedir', str, required=True)
-		vals = p.check(vals)
+		vals = p.check(vals, set_absent_as_none=True)
 
 		d = kls._db_open(args)
 
