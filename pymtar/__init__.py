@@ -130,6 +130,20 @@ class db(SH):
 		res = self.tar.select('*', 'id_tape=?', [rows[0]['rowid']])
 		return [dict(_) for _ in res]
 
+	def find_tars_by_tape_num(self, tape, num):
+		rows = self.find_tape_by_multi(tape)
+		if not len(rows):
+			raise ItemNotFound("Unable to find tape with rowid, serial number, or barcode '%s', cannot create tar" % tape)
+
+		id_tape = rows[0]['rowid']
+
+		res = self.tar.select('*', 'id_tape=? and num=?', [id_tape, num])
+		rows = [dict(_) for _ in res]
+		if not len(rows):
+			raise ItemNotFound("Unable to find tar with num %d for tape '%s' (rowid=%d)" % (num, tape, id_tape))
+
+		return rows[0]
+
 	def new_tar(self, tape, num, stime, etime, access_cnt, blk_offset, options, uname):
 		rows = self.find_tape_by_multi(tape)
 		if not len(rows):
@@ -150,6 +164,37 @@ class db(SH):
 	# -------------------------------------------------------------------------
 	# Tar files
 
+	def find_tarfiles(self):
+		res = self.tar.select('*')
+		return [dict(_) for _ in res]
+
+	def find_tarfiles_by_tape(self, val):
+		rows = self.find_tape_by_multi(val)
+		if not len(rows):
+			raise ItemNotFound("Unable to find tape with rowid, serial number, or barcode '%s', cannot create tar" % tape)
+
+		id_tape = rows[0]['rowid']
+
+		res = self.tarfile.select('*', 'id_tape=?', [id_tape])
+		return [dict(_) for _ in res]
+
+	def find_tarfiles_by_tar(self, tape, tar):
+		rows = self.find_tape_by_multi(tape)
+		if not len(rows):
+			raise ItemNotFound("Unable to find tape with rowid, serial number, or barcode '%s', cannot create tar" % tape)
+
+		id_tape = rows[0]['rowid']
+
+		res = self.tar.select('rowid', 'id_tape=? and num=?', [id_tape, int(tar)])
+		rows = res.fetchall()
+		if not len(rows):
+			raise ItemNotFound("Unable to find tar with num %d for tape '%s' (rowid=%d), cannot add tar file" % (tar, tape, id_tape))
+
+		id_tar = rows[0]['rowid']
+
+		res = self.tarfile.select('*', 'id_tape=? and id_tar=?', [id_tape, id_tar])
+		return [dict(_) for  _ in res]
+
 	def new_tarfile(self, tape, tar, fullpath, relpath, fname, sz, sha256):
 		rows = self.find_tape_by_multi(tape)
 		if not len(rows):
@@ -157,9 +202,10 @@ class db(SH):
 
 		id_tape = rows[0]['rowid']
 
-		rows = self.tar.select('rowid', 'id_tape=? and num=?', [id_tape, num])
+		res = self.tar.select('rowid', 'id_tape=? and num=?', [id_tape, int(tar)])
+		rows = res.fetchall()
 		if not len(rows):
-			raise ItemNotFound("Unable to find tar with num %d for tape '%s' (rowid=%d), cannot add tar file" % (num, tape, id_tape))
+			raise ItemNotFound("Unable to find tar with num %d for tape '%s' (rowid=%d), cannot add tar file" % (tar, tape, id_tape))
 
 		id_tar = rows[0]['rowid']
 
@@ -229,15 +275,22 @@ class mt:
 
 	def bsf(self, cnt=1):
 		"""Move back one file, or @cnt if provided"""
-		if cnt is not int:
-			raise Exception("bsf: cnt parameter must be an integer, got '%s'" % cnt)
+		if type(cnt) is not int:
+			raise Exception("bsf: cnt parameter must be an integer, got '%s' type %s" % (cnt,type(cnt)))
 
-		self._run('mt', '-f', self._dev, 'bsf', cnt, timeout=None)
+		self._run('mt', '-f', self._dev, 'bsf', str(cnt), timeout=None)
 
 	def fsf(self, cnt=1):
 		"""Move forward one file, or @cnt if provided"""
-		if cnt is not int:
-			raise Exception("fsf: cnt parameter must be an integer, got '%s'" % cnt)
+		if type(cnt) is not int:
+			raise Exception("fsf: cnt parameter must be an integer, got '%s' type %s" % (cnt,type(cnt)))
 
-		self._run('mt', '-f', self._dev, 'bsf', cnt, timeout=None)
+		self._run('mt', '-f', self._dev, 'fsf', str(cnt), timeout=None)
+
+	def asf(self, cnt):
+		"""Rewind the tape and advance to @cnt files"""
+		if type(cnt) is not int:
+			raise Exception("fsf: cnt parameter must be an integer, got '%s' type %s" % (cnt,type(cnt)))
+
+		self._run('mt', '-f', self._dev, 'asf', str(cnt), timeout=None)
 

@@ -4,7 +4,9 @@ import argparse
 import datetime
 import json
 import os
+import subprocess
 import sys
+import tempfile
 
 # This library
 import pymtar
@@ -22,6 +24,18 @@ def dateYYYYMMDDHHMMSS(v):
 		return datetime.datetime.utcnow()
 	else:
 		return datetime.datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
+
+def hashfile(f):
+	"""
+	Hash file with path @f.
+	Either call sha256sum command line tool, or implement it directly in python.
+	As I suspect sha256sum is faster I will invoke it through subprocess.
+	"""
+
+	args = ['sha256sum', f]
+	ret = subprocess.run(args, stdout=subprocess.PIPE)
+	return ret.stdout.decode('utf-8').split(' ')[0]
+
 
 class actions:
 	"""
@@ -44,6 +58,8 @@ class actions:
 		acts['find'] = kls.action_find
 		acts['list'] = kls.action_list
 		acts['new'] = kls.action_new
+		acts['queue'] = kls.action_queue
+		acts['write'] = kls.action_write
 
 		if args.action[0] in acts:
 			acts[ args.action[0] ](args)
@@ -72,7 +88,6 @@ class actions:
 	def action_find_tape_sn(kls, args, sn):
 		db = kls._db_open(args)
 		print(db.find_tape_by_sn(sn))
-
 
 	# -------------------------------------------------------------------------
 	# -------------------------------------------------------------------------
@@ -130,7 +145,24 @@ class actions:
 
 		db = kls._db_open(args)
 
-		raise NotImplementedError
+		# No filtering
+		if not len(vals):
+			rows = db.find_tarfiles()
+		else:
+			if 'tape' in vals:
+				rows = db.find_tarfiles_by_tape(vals['tape'])
+
+			elif 'tar' in vals:
+				raise NotImplementedError
+
+			elif 'tarnum' in vals:
+				raise NotImplementedError
+
+			else:
+				raise PrintHelpException("Unsupported filter for tar listing: %s" % str(vals))
+
+		for row in rows:
+			print(row)
 
 	# -------------------------------------------------------------------------
 	# -------------------------------------------------------------------------
@@ -230,6 +262,154 @@ class actions:
 			raise PrintHelpException(str(e))
 
 
+	# -------------------------------------------------------------------------
+	# -------------------------------------------------------------------------
+	@classmethod
+	def action_queue(kls, args):
+		vals = args.action[1:4]
+		# Split ['foo=bar', 'baz=bat'] into [['foo','bar'], ['baz','bat']]
+		vals = dict([_.split('=',1) for _ in vals])
+
+		# Parse paramaters
+		p = DataArgsParser('new tar file')
+		p.add('tape', str, required=True)
+		p.add('tar', int, required=True)
+		p.add('basedir', str, required=True)
+		vals = p.check(vals)
+
+		db = kls._db_open(args)
+
+		files = args.action[4:]
+		if len(files) == 1 and files[0] == '-':
+			files = sys.stdin.readlines()
+			files = [_.strip() for _ in files]
+
+		for fl in files:
+			# Make it an absolute path
+			fl = os.path.abspath(fl)
+
+			# Ensure it's under the base directory
+			if not fl.startswith(vals['basedir']):
+				raise PrintHelpException("File '%s' is not under the specified base directory '%s'" % (fl, vals['basedir']))
+
+			# Make a relative path
+			z = os.path.relpath(fl, vals['basedir'])
+			if z.startswith('..'):
+				raise Exception("Should not reach this point as base dir was already checked: %s" % ([fl, vals['basedir'], z]))
+
+			# See if file is already queued
+			res = db.tarfile.select('rowid', 'fullpath=?', [fl])
+			rows = [dict(_) for _ in res]
+			if len(rows):
+				print("Skipping: %s" % fl)
+			else:
+				print("Adding:   %s" % fl)
+
+				h = hashfile(fl)
+				sz = os.path.getsize(fl)
+				fname = os.path.basename(fl)
+
+				db.new_tarfile(tape=vals['tape'], tar=vals['tar'], fullpath=fl, relpath=z, fname=fname, sz=sz, sha256=h)
+
+		# TODO: ensure all files in the same tar have the same base directory
+
+	@classmethod
+	def action_write(kls, args):
+		# 1) Find tape, find tar, find files
+		# 2) Move tape to correct location
+		# 3) Write file list to a temp file
+		# 4) Run tar against the file list to write to tape
+
+
+		vals = args.action[1:]
+		# Split ['foo=bar', 'baz=bat'] into [['foo','bar'], ['baz','bat']]
+		vals = dict([_.split('=',1) for _ in vals])
+
+		# Parse paramaters
+		p = DataArgsParser('new tar file')
+		p.add('tape', str, required=True)
+		p.add('tar', int, required=True)
+		vals = p.check(vals)
+
+		db = kls._db_open(args)
+
+		# 1)
+		# Get tape
+		tape = db.find_tape_by_multi(vals['tape'])
+		if not len(tape):
+			print("Tape not found")
+			return
+
+		id_tape = tape['rowid']
+		print("Tape: SN=%s, barcode=%s" % (tape['sn'], tape['barcode']))
+
+		# Get tar file info
+		tar = db.find_tars_by_tape_num(id_tape, vals['tar'])
+		print("Tar: num=%d" % (tar['num'],))
+
+
+		# Get files for this tar file that have been queued
+		files = db.find_tarfiles_by_tar(vals['tape'], vals['tar'])
+
+		print("Found %d files to write" % len(files))
+		if not len(files):
+			print("\tNo files found to write, aborint")
+			return
+
+		# Sort by path
+		files = sorted(files, key=lambda _: _['fullpath'])
+
+		# Get the base directory to change working directory to
+		basedir = files[0]['fullpath'][:-(len(files[0]['relpath']))]
+
+		# 2)
+		# Get tape drive controller
+		m = pymtar.mt(args.file)
+
+		# Move the tape as appropriate
+		ret = m.status()
+		if ret[0] == tar['num']:
+			# Already at the correct spot
+			pass
+		else:
+			# If writing first file, just rewind to zero
+			if tar['num'] == 0:
+				m.rewind()
+			# Can just advance from current spot
+			elif ret[0] < tar['num']:
+				# Advance
+				m.fsf(tar['num'] - ret[0])
+			# Rewind and seek to absolute file
+			else:
+				# Maybe bsf is adequate
+				m.asf(tar['num'])
+
+		# 3)
+		# Write relative file list to a file and tell tar to read from it
+		with tempfile.NamedTemporaryFile() as f:
+			# Write files in sorted order into the temp file
+			for fl in files:
+				f.write( (fl['relpath'] + '\n').encode('utf-8') )
+				print("Preparing: %s" % fl['relpath'])
+			f.seek(0)
+			dat = f.read()
+
+			cur_cwd = os.getcwd()
+			try:
+				print("cwd: %s" % basedir)
+				os.chdir(basedir)
+
+				# 4)
+				# Verbose to watch progress on the screen
+				args = ['tar', 'vcf', args.file, '--verbatim-files-from', '-T', f.name]
+				# print the args for debugging
+				print(args)
+				subprocess.run(args)
+			finally:
+				# Move CWD to original location
+				os.chdir(cur_cwd)
+
+		# And temp file auto-cleaned up
 
 class DataArgsParser:
 	"""
@@ -329,6 +509,13 @@ def main():
                             fname         File name (no directory path included)
                             sz            File size in bytes
                             sha256        SHA256 hash of the file
+    queue               Add a bunch of files to a tar file to queue up for writing
+                            tape          Tape identifier
+                            tar           Tar file to add files to
+                            *             List of files to add
+    write               Write a tar file to the tape drive
+                            tape          Tape identifier
+                            tar           Tar file to write
 """
 
 	args = p.parse_args()
