@@ -625,12 +625,16 @@ class actions:
 		if not len(tape):
 			print("Tape not found")
 			return
+		tape = tape[0]
 
 		id_tape = tape['rowid']
 		print("Tape: SN=%s, barcode=%s" % (tape['sn'], tape['barcode']))
 
 		# Get tar file info
 		tar = d.find_tars_by_tape_num(id_tape, vals['tar'])
+		if not len(tar):
+			print("Tar not found")
+			return
 		print("Tar: num=%d" % (tar['num'],))
 
 
@@ -654,21 +658,50 @@ class actions:
 
 		# Move the tape as appropriate
 		ret = m.status()
-		if ret[0] == tar['num']:
-			# Already at the correct spot
-			pass
+		if ret[0] == -1:
+			raise Exception("no tape present, cannot write")
+
+		# Go all the way back to start of the tape
+		elif tar['num'] == 0:
+			m.rewind()
+
+		# Not the first file, so look for it
 		else:
-			# If writing first file, just rewind to zero
-			if tar['num'] == 0:
-				m.rewind()
-			# Can just advance from current spot
+			# 3 cases of being at the start, middle, or end of the desired file number
+			if tar['num'] == ret[0] and ret[1] == 0:
+				# Already there
+				pass
+
+			elif tar['num'] == ret[0] and ret[1] > 0:
+				# In the middle of the desired file number, so have to back up and then forward
+
+				# Back up to (ret[0]-1, -1)
+				m.bsf()
+				# Forward to (ret[0], 0)
+				m.fsf()
+
+			elif tar['num'] == ret[0] and ret[1] == -1:
+				# At the end of the desired file number, so have to back up and then forward
+
+				# Back up to (ret[0]-1, -1)
+				m.bsf()
+				# Forward to (ret[0], 0)
+				m.fsf()
+
+			# Need to advance a number of files:
 			elif ret[0] < tar['num']:
-				# Advance
 				m.fsf(tar['num'] - ret[0])
-			# Rewind and seek to absolute file
-			else:
-				# Maybe bsf is adequate
-				m.asf(tar['num'])
+
+			# Need to backup a number of files
+			elif tar['num'] < ret[0]:
+				# Have to back up one more than desired (to end of previous file)
+				m.bsf(ret[0] - tar['num'] + 1)
+				# then advance one to start of desired file
+				m.fsf(1)
+
+		ret2 = m.status()
+		if tar['num'] != ret2[0] and ret2[1] != 0:
+			raise Exception("Failed to seek tape: desired file number %d, was at %s and now at %s" % (tar['num'], ret, ret2))
 
 		# 3)
 		# Write relative file list to a file and tell tar to read from it
