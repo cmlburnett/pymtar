@@ -9,6 +9,7 @@ import datetime
 import hashlib
 import os
 import subprocess
+import tempfile
 
 # Installed libraries
 import sqlite3
