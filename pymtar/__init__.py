@@ -727,11 +727,11 @@ class actions:
 			raise Exception("Failed to seek tape: desired file number %d, was at %s and now at %s" % (num, ret, ret2))
 
 		# set start time
-		db.begin()
+		d.begin()
 		n = db._now()
-		db.tar.update({'stime': n}, {'rowid': tar['rowid']})
+		d.tar.update({'stime': n}, {'rowid': tar['rowid']})
 		print("Start: %s" % n)
-		db.commit()
+		d.commit()
 
 		try:
 			# 3)
@@ -763,11 +763,11 @@ class actions:
 
 		finally:
 			# set end time
-			db.begin()
+			d.begin()
 			n = db._now()
-			db.tar.update({'etime': n}, {'rowid': tar['rowid']})
+			d.tar.update({'etime': n}, {'rowid': tar['rowid']})
 			print("End: %s" % n)
-			db.commit()
+			d.commit()
 
 class DataArgsParser:
 	"""
