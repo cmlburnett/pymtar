@@ -728,7 +728,9 @@ class actions:
 
 		# set start time
 		db.begin()
-		db.tar.update({'stime': db._now()}, {'rowid': tar['rowid']})
+		n = db._now()
+		db.tar.update({'stime': n}, {'rowid': tar['rowid']})
+		print("Start: %s" % n)
 		db.commit()
 
 		try:
@@ -762,7 +764,9 @@ class actions:
 		finally:
 			# set end time
 			db.begin()
-			db.tar.update({'etime': db._now()}, {'rowid': tar['rowid']})
+			n = db._now()
+			db.tar.update({'etime': n}, {'rowid': tar['rowid']})
+			print("End: %s" % n)
 			db.commit()
 
 class DataArgsParser:
