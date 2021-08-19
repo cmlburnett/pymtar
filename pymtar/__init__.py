@@ -651,7 +651,7 @@ class actions:
 			print("-"*80)
 			print("Tar: num=%d" % (num))
 
-			kls._action_write_num(kls, args, vals, id_tape, num, d)
+			kls._action_write_num(args, vals, id_tape, num, d)
 
 	@classmethod
 	def _action_write_num(kls, args, vals, id_tape, num, d):
