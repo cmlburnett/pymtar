@@ -312,6 +312,22 @@ def dateYYYYMMDDHHMMSS(v):
 	else:
 		return datetime.datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
 
+def rangeint(v):
+	try:
+		ret = int(v)
+		return (ret,ret)
+	except:
+		pass
+
+	if '-' not in v:
+		raise ValueError("Unrecognized integer range '%s'" % v)
+
+	parts = v.split('-')
+	if len(parts) != 2:
+		raise ValueError("Unrecognized integer range '%s'" % v)
+
+	return (int(parts[0]), int(parts[1]))
+
 def hashfile(f):
 	"""
 	Hash file with path @f.
@@ -615,7 +631,7 @@ class actions:
 		# Parse paramaters
 		p = DataArgsParser('new tar file')
 		p.add('tape', str, required=True)
-		p.add('tar', int, required=True)
+		p.add('tar', rangeint, required=True)
 		vals = p.check(vals)
 
 		d = kls._db_open(args)
@@ -631,16 +647,22 @@ class actions:
 		id_tape = tape['rowid']
 		print("Tape: SN=%s, barcode=%s" % (tape['sn'], tape['barcode']))
 
+		for num in range(vals['tar'][0], vals['tar'][1]):
+			print("-"*80)
+			print("Tar: num=%d" % (tar['num'],))
+
+			kls._action_write_num(kls, args, vals, id_tape, num, d)
+
+	@classmethod
+	def _action_write_num(kls, args, vals, id_tape, num, d):
 		# Get tar file info
-		tar = d.find_tars_by_tape_num(id_tape, vals['tar'])
+		tar = d.find_tars_by_tape_num(id_tape, num)
 		if not len(tar):
 			print("Tar not found")
 			return
-		print("Tar: num=%d" % (tar['num'],))
-
 
 		# Get files for this tar file that have been queued
-		files = d.find_tarfiles_by_tar(vals['tape'], vals['tar'])
+		files = d.find_tarfiles_by_tar(vals['tape'], num)
 
 		print("Found %d files to write" % len(files))
 		if not len(files):
@@ -663,17 +685,17 @@ class actions:
 			raise Exception("no tape present, cannot write")
 
 		# Go all the way back to start of the tape
-		elif tar['num'] == 0:
+		elif num == 0:
 			m.rewind()
 
 		# Not the first file, so look for it
 		else:
 			# 3 cases of being at the start, middle, or end of the desired file number
-			if tar['num'] == ret[0] and ret[1] == 0:
+			if num == ret[0] and ret[1] == 0:
 				# Already there
 				pass
 
-			elif tar['num'] == ret[0] and ret[1] > 0:
+			elif num == ret[0] and ret[1] > 0:
 				# In the middle of the desired file number, so have to back up and then forward
 
 				# Back up to (ret[0]-1, -1)
@@ -681,7 +703,7 @@ class actions:
 				# Forward to (ret[0], 0)
 				m.fsf()
 
-			elif tar['num'] == ret[0] and ret[1] == -1:
+			elif num == ret[0] and ret[1] == -1:
 				# At the end of the desired file number, so have to back up and then forward
 
 				# Back up to (ret[0]-1, -1)
@@ -690,46 +712,58 @@ class actions:
 				m.fsf()
 
 			# Need to advance a number of files:
-			elif ret[0] < tar['num']:
-				m.fsf(tar['num'] - ret[0])
+			elif ret[0] < num:
+				m.fsf(num - ret[0])
 
 			# Need to backup a number of files
-			elif tar['num'] < ret[0]:
+			elif num < ret[0]:
 				# Have to back up one more than desired (to end of previous file)
-				m.bsf(ret[0] - tar['num'] + 1)
+				m.bsf(ret[0] - num + 1)
 				# then advance one to start of desired file
 				m.fsf(1)
 
 		ret2 = m.status()
-		if tar['num'] != ret2[0] and ret2[1] != 0:
-			raise Exception("Failed to seek tape: desired file number %d, was at %s and now at %s" % (tar['num'], ret, ret2))
+		if num != ret2[0] and ret2[1] != 0:
+			raise Exception("Failed to seek tape: desired file number %d, was at %s and now at %s" % (num, ret, ret2))
 
-		# 3)
-		# Write relative file list to a file and tell tar to read from it
-		with tempfile.NamedTemporaryFile() as f:
-			# Write files in sorted order into the temp file
-			for fl in files:
-				f.write( (fl['relpath'] + '\n').encode('utf-8') )
-				print("Preparing: %s" % fl['relpath'])
-			f.seek(0)
-			dat = f.read()
+		# set start time
+		db.begin()
+		db.tar.update({'stime': db._now()}, {'rowid': tar['rowid']})
+		db.commit()
 
-			cur_cwd = os.getcwd()
-			try:
-				print("cwd: %s" % basedir)
-				os.chdir(basedir)
+		try:
+			# 3)
+			# Write relative file list to a file and tell tar to read from it
+			with tempfile.NamedTemporaryFile() as f:
+				# Write files in sorted order into the temp file
+				for fl in files:
+					f.write( (fl['relpath'] + '\n').encode('utf-8') )
+					print("Preparing: %s" % fl['relpath'])
+				f.seek(0)
+				dat = f.read()
 
-				# 4)
-				# Verbose to watch progress on the screen
-				args = ['tar', 'vcf', args.file, '--verbatim-files-from', '-T', f.name]
-				# print the args for debugging
-				print(args)
-				subprocess.run(args)
-			finally:
-				# Move CWD to original location
-				os.chdir(cur_cwd)
+				cur_cwd = os.getcwd()
+				try:
+					print("cwd: %s" % basedir)
+					os.chdir(basedir)
 
-		# And temp file auto-cleaned up
+					# 4)
+					# Verbose to watch progress on the screen
+					args = ['tar', 'vcf', args.file, '--verbatim-files-from', '-T', f.name]
+					# print the args for debugging
+					print(args)
+					subprocess.run(args)
+				finally:
+					# Move CWD to original location
+					os.chdir(cur_cwd)
+
+			# And temp file auto-cleaned up
+
+		finally:
+			# set end time
+			db.begin()
+			db.tar.update({'etime': db._now()}, {'rowid': tar['rowid']})
+			db.commit()
 
 class DataArgsParser:
 	"""
