@@ -649,7 +649,7 @@ class actions:
 
 		for num in range(vals['tar'][0], vals['tar'][1]):
 			print("-"*80)
-			print("Tar: num=%d" % (tar['num'],))
+			print("Tar: num=%d" % (num))
 
 			kls._action_write_num(kls, args, vals, id_tape, num, d)
 
