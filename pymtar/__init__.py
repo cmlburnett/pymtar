@@ -655,6 +655,10 @@ class actions:
 
 	@classmethod
 	def _action_write_num(kls, args, vals, id_tape, num, d):
+		# Check that user wants to continue onward
+		print("Pausing for 30 seconds, ctrl-c to stop writing")
+		time.sleep(30)
+
 		# Get tar file info
 		tar = d.find_tars_by_tape_num(id_tape, num)
 		if not len(tar):
