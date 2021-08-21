@@ -18,10 +18,20 @@ def main():
 	p.add_argument('-f', '--file', default='/dev/nst0', help='Device file path')
 	p.add_argument('-j', '--json', default=False, action='store_true', help="Print responses, where appropriate, in JSON instead")
 	p.add_argument('-d', '--db', nargs='?', required=True, help="Database file to use, will be created if not found")
+	p.add_argument('--notify', choices=('all','limited','none'), default=None, help="Use pushover.net to send notifications to your devices. Default is none.")
 	p.add_argument('action', nargs=argparse.REMAINDER, help='Action/command to execute')
 
 
 	action_help = """
+  Notifications help:
+    none                Do not send any notifications
+    limited             This will send limited notifications:
+                           Completion of a queue
+                           Completion of a write
+    full                This will send all notifications
+                           Everything under "limited"
+                           Individual tar writes
+                           Every 100 queued files or every 10% of the files, whichever is larger
   Actions help:
     find tape.barcode   Find tapes by barcode
     find tape.sn        Find tapes by serial number
@@ -68,6 +78,13 @@ def main():
 	if args.help:
 		p.print_help()
 		print(action_help)
+		sys.exit(2)
+
+	if args.notify != 'none' and pymtar.pushover is None:
+		p.print_help()
+		print(action_help)
+
+		print("Pushover is not configured, cannot send notifications")
 		sys.exit(2)
 
 	try:

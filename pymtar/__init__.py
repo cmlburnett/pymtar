@@ -18,6 +18,30 @@ import sqlite3
 # My installed libraries
 from sqlitehelper import SH, DBTable, DBCol, DBColROWID
 
+# Used for notifications
+try:
+	import pushover
+except:
+	pushover = None
+
+# Path of configuration file for Pushover
+PUSHOVER_CFG_FILE = "~/.pushoverrc"
+PUSHOVER_CFG_FILE = os.path.expanduser(PUSHOVER_CFG_FILE)
+
+
+def send_notification(args, flags, msg):
+	# Not configured, cannot notify
+	if pushover is None: return
+
+	# User doesn't want notifications
+	if args.pushover == 'none': return
+
+	# Flags specified by the code 
+	if args.pushover not in flags: return
+
+	pushover.Client().send_message(msg, title="pymtar")
+	print("notify: %s" % msg)
+
 class ItemExists(Exception): pass
 class ItemNotFound(Exception): pass
 
@@ -588,7 +612,18 @@ class actions:
 			files = sys.stdin.readlines()
 			files = [_.strip() for _ in files]
 
-		for fl in files:
+		# Notify on 10% or 100 files, whicever is larger
+		num_files = len(files)
+		if num_files > 1000:
+			num_10percent = num_files // 10
+		else:
+			num_10percent = 100
+
+		# Send start notification
+		send_notification(args, ('all','limited'), "starting queue of %d files to tape=%d and num=%d" % (num_files, vals['tape'], vals['tar']))
+
+		# Iterate other all of the files
+		for x,fl in enumerate(files):
 			# Make it an absolute path
 			fl = os.path.abspath(fl)
 
@@ -615,7 +650,14 @@ class actions:
 
 				d.new_tarfile(tape=vals['tape'], tar=vals['tar'], fullpath=fl, relpath=z, fname=fname, sz=sz, sha256=h)
 
+				# Send notification
+				if (x+1) % num_10percent == 0:
+					send_notification(args, ('all',), "queue %d files of %d done to tape=%d and num=%d" % ((x+1),num_files,id_tape,num))
+
 		# TODO: ensure all files in the same tar have the same base directory
+
+		# Send completion notification
+		send_notification(args, ('all','limited'), "queue completed to tape=%d and num=%d" % (id_tape,num))
 
 	@classmethod
 	def action_write(kls, args):
@@ -648,11 +690,23 @@ class actions:
 		id_tape = tape['rowid']
 		print("Tape: SN=%s, barcode=%s" % (tape['sn'], tape['barcode']))
 
+		# Send start notification
+		if vals['tar'][0] == vals['tar'][1]:
+			send_notification(args, ('all','limited'), "starting write to tape=%d and num=%d" % (num_files, vals['tape'], vals['tar'][0]))
+		else:
+			send_notification(args, ('all','limited'), "starting write to tape=%d and num=%d-%d" % (num_files, vals['tape'], vals['tar'][0], vals['tar'][1]))
+
+		# Iterate over tar numbers
 		for num in range(vals['tar'][0], vals['tar'][1]):
 			print("-"*80)
 			print("Tar: num=%d" % (num))
 
 			kls._action_write_num(args, vals, id_tape, num, d)
+
+		if vals['tar'][0] == vals['tar'][1]:
+			send_notification(args, ('limited','all'), "write completed to tape=%d and num=%d" % (vals['tape'],vals['tar'][0]))
+		else:
+			send_notification(args, ('limited','all'), "write completed to tape=%d and num=%d-%d" % (vals['tape'],vals['tar'][0], vals['tar'][1]))
 
 	@classmethod
 	def _action_write_num(kls, args, vals, id_tape, num, d):
@@ -776,6 +830,8 @@ class actions:
 			d.tar.update({'rowid': tar['rowid']}, {'etime': n})
 			print("End: %s" % n)
 			d.commit()
+
+		send_notification(args, ('all',), "write completed to tape=%d and num=%d" % (id_tape,num))
 
 class DataArgsParser:
 	"""
