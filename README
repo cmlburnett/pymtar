@@ -74,6 +74,32 @@ In other words:
 	file=1, block=-1: at the start of the file marker after file 1
 	file=2, block=0: start of file 2
 
+A schematicof a tape:
+
++---------------------------------------------------------------------------------
+|  0  | F |  1  | F |  2  | F |
+|     | I |     | I |     | I |
+|     | L |     | L |     | L |
+|     | E |     | E |     | E |
++----------------------------------------------------------------------------------
+A     B   C     D   E     F   G
+
+where A, C, and E are the start positions of files 0, 1, and 2.
+where B, D, and F are the end position o ffiles 0, 1, and 2.
+
+The tape found between B & C, and D & E, and F & G are the end-of-file markers.
+These markers are how the tape drive counts files when manipulating the head position with mt(1).
+
+If you look at mt status for each of these, you would find:
+
+	A: file=0, block=0
+	B: file=0, blokc=-1
+	C: file=1, block=0
+	D: file=1, block=-1
+	E: file=2, block=0
+	F: file=2, block=-1
+	G: file=3, block=0
+
 So if you were at file=10, block=40 and wanted to go to the start of file 9:
 
 	mt bsf
