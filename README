@@ -15,7 +15,7 @@ Installation is easy
 This requires my helper library for sqlite as I was tired of some basic quality of life functions when using sqlite:
 
 	cd ..
-	https://github.com/cmlburnett/sqlitehelper
+	git clone https://github.com/cmlburnett/sqlitehelper
 	cd sqlitehelper
 	sudo python3 setup.py install
 
