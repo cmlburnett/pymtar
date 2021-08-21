@@ -9,6 +9,7 @@ import datetime
 import hashlib
 import os
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -30,14 +31,15 @@ PUSHOVER_CFG_FILE = os.path.expanduser(PUSHOVER_CFG_FILE)
 
 
 def send_notification(args, flags, msg):
+	print(args, flags, msg)
 	# Not configured, cannot notify
 	if pushover is None: return
 
 	# User doesn't want notifications
-	if args.pushover == 'none': return
+	if args.notify == 'none': return
 
 	# Flags specified by the code 
-	if args.pushover not in flags: return
+	if args.notify not in flags: return
 
 	pushover.Client().send_message(msg, title="pymtar")
 	print("notify: %s" % msg)
@@ -620,7 +622,7 @@ class actions:
 			num_10percent = 100
 
 		# Send start notification
-		send_notification(args, ('all','limited'), "starting queue of %d files to tape=%d and num=%d" % (num_files, vals['tape'], vals['tar']))
+		send_notification(args, ('all','limited'), "starting queue of %d files to tape=%s and num=%d" % (num_files, vals['tape'], vals['tar']))
 
 		# Iterate other all of the files
 		for x,fl in enumerate(files):
@@ -652,12 +654,12 @@ class actions:
 
 				# Send notification
 				if (x+1) % num_10percent == 0:
-					send_notification(args, ('all',), "queue %d files of %d done to tape=%d and num=%d" % ((x+1),num_files,id_tape,num))
+					send_notification(args, ('all',), "queue %d files of %d done to tape=%s and num=%d" % ((x+1),num_files,id_tape,num))
 
 		# TODO: ensure all files in the same tar have the same base directory
 
 		# Send completion notification
-		send_notification(args, ('all','limited'), "queue completed to tape=%d and num=%d" % (id_tape,num))
+		send_notification(args, ('all','limited'), "queue completed to tape=%s and num=%d" % (id_tape,num))
 
 	@classmethod
 	def action_write(kls, args):
@@ -692,9 +694,9 @@ class actions:
 
 		# Send start notification
 		if vals['tar'][0] == vals['tar'][1]:
-			send_notification(args, ('all','limited'), "starting write to tape=%d and num=%d" % (num_files, vals['tape'], vals['tar'][0]))
+			send_notification(args, ('all','limited'), "starting write to tape=%s and num=%d" % (vals['tape'], vals['tar'][0]))
 		else:
-			send_notification(args, ('all','limited'), "starting write to tape=%d and num=%d-%d" % (num_files, vals['tape'], vals['tar'][0], vals['tar'][1]))
+			send_notification(args, ('all','limited'), "starting write to tape=%s and num=%d-%d" % (vals['tape'], vals['tar'][0], vals['tar'][1]))
 
 		# Iterate over tar numbers
 		for num in range(vals['tar'][0], vals['tar'][1]):
@@ -704,9 +706,9 @@ class actions:
 			kls._action_write_num(args, vals, id_tape, num, d)
 
 		if vals['tar'][0] == vals['tar'][1]:
-			send_notification(args, ('limited','all'), "write completed to tape=%d and num=%d" % (vals['tape'],vals['tar'][0]))
+			send_notification(args, ('limited','all'), "write completed to tape=%s and num=%d" % (vals['tape'],vals['tar'][0]))
 		else:
-			send_notification(args, ('limited','all'), "write completed to tape=%d and num=%d-%d" % (vals['tape'],vals['tar'][0], vals['tar'][1]))
+			send_notification(args, ('limited','all'), "write completed to tape=%s and num=%d-%d" % (vals['tape'],vals['tar'][0], vals['tar'][1]))
 
 	@classmethod
 	def _action_write_num(kls, args, vals, id_tape, num, d):
@@ -831,7 +833,7 @@ class actions:
 			print("End: %s" % n)
 			d.commit()
 
-		send_notification(args, ('all',), "write completed to tape=%d and num=%d" % (id_tape,num))
+		send_notification(args, ('all',), "write completed to tape=%s and num=%d" % (id_tape,num))
 
 class DataArgsParser:
 	"""
