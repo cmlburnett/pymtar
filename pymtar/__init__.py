@@ -656,8 +656,11 @@ class actions:
 
 	@classmethod
 	def _action_write_num(kls, args, vals, id_tape, num, d):
+		# Beep
+		print('\a')
 		# Check that user wants to continue onward
 		print("Pausing for 30 seconds, ctrl-c to stop writing")
+		# Wait for input
 		time.sleep(30)
 
 		# Get tar file info
