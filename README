@@ -20,7 +20,7 @@ This requires my helper library for sqlite as I was tired of some basic quality 
 	sudo python3 setup.py install
 
 ### Description ###
-The sqlite database stores three primary entitied:
+The sqlite database stores three primary entities:
 
 	tape: contains metadata information about tapes (model, serial number, purchase date, etc)
 	tar: a collection of files grouped together and written to tape with tar(1)
