@@ -31,7 +31,6 @@ PUSHOVER_CFG_FILE = os.path.expanduser(PUSHOVER_CFG_FILE)
 
 
 def send_notification(args, flags, msg):
-	print(args, flags, msg)
 	# Not configured, cannot notify
 	if pushover is None: return
 
@@ -699,7 +698,7 @@ class actions:
 			send_notification(args, ('all','limited'), "starting write to tape=%s and num=%d-%d" % (vals['tape'], vals['tar'][0], vals['tar'][1]))
 
 		# Iterate over tar numbers
-		for num in range(vals['tar'][0], vals['tar'][1]):
+		for num in range(vals['tar'][0], vals['tar'][1]+1):
 			print("-"*80)
 			print("Tar: num=%d" % (num))
 
@@ -815,10 +814,10 @@ class actions:
 
 					# 4)
 					# Verbose to watch progress on the screen
-					args = ['tar', 'vcf', args.file, '--verbatim-files-from', '-T', f.name]
+					subargs = ['tar', 'vcf', args.file, '--verbatim-files-from', '-T', f.name]
 					# print the args for debugging
-					print(args)
-					subprocess.run(args)
+					print(subargs)
+					subprocess.run(subargs)
 				finally:
 					# Move CWD to original location
 					os.chdir(cur_cwd)
