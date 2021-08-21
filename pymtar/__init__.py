@@ -43,8 +43,12 @@ def send_notification(args, flags, msg):
 	# Flags specified by the code 
 	if args.notify not in flags: return
 
-	pushover.Client().send_message(msg, title="pymtar")
-	print("notify: %s" % msg)
+	try:
+		pushover.Client().send_message(msg, title="pymtar")
+	except Exception as e:
+		print("Failed to send message: %s" % e)
+	finally:
+		print("notify: %s" % msg)
 
 class db(SH):
 	"""DB schema"""
