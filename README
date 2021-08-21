@@ -34,6 +34,13 @@ A tape consists of a sequence of "files" with a marker at the end of each marker
 A "file" is whatever you want, in this case a single tar file.
 As such, a tape drive doesn't understand files in the typical fileystem perspective and tar provides this for you.
 
+Tape devices are "rewind" or "non-rewind" in which the former auto-rewinds after each tape operation, which you should NOT use.
+
+	auto-rewind: /dev/st0
+	non-rewind: /dev/nst0
+
+As multiple operations are performed when using pymtar writes, do not use the auto-rewinding device.
+
 Shell actions to work with tapes:
 
 	export TAPE=/dev/nst0
