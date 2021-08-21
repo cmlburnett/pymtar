@@ -11,7 +11,7 @@ setup(
 	author_email = "cmlburnett@gmail.com",
 	url = "https://github.com/cmlburnett/pymtar",
 	packages = ['pymtar'],
-	package_data = {'pymtar': ['pymtar/__init__.py', 'pymtar/__main__.py']},
+	package_data = {'pymtar': ['pymtar/__init__.py', 'pymtar/__main__.py', 'pymtar/util.py']},
 	classifiers = [
 		'Programming Language :: Python :: 3.9'
 	]

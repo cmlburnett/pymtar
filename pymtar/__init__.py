@@ -6,7 +6,6 @@ Stores file data in a sqlite database for rapid localization of files on a tape 
 
 # Global libraries
 import datetime
-import hashlib
 import os
 import subprocess
 import sys
@@ -30,6 +29,10 @@ PUSHOVER_CFG_FILE = "~/.pushoverrc"
 PUSHOVER_CFG_FILE = os.path.expanduser(PUSHOVER_CFG_FILE)
 
 
+from .util import PrintHelpException, ItemExists, ItemNotFound, DataArgsParser, getuname
+from .util import dateYYYYMMDD, dateYYYYMMDDHHMMSS, rangeint, hashfile
+
+
 def send_notification(args, flags, msg):
 	# Not configured, cannot notify
 	if pushover is None: return
@@ -42,9 +45,6 @@ def send_notification(args, flags, msg):
 
 	pushover.Client().send_message(msg, title="pymtar")
 	print("notify: %s" % msg)
-
-class ItemExists(Exception): pass
-class ItemNotFound(Exception): pass
 
 class db(SH):
 	"""DB schema"""
@@ -324,48 +324,6 @@ class mt:
 
 
 
-class PrintHelpException(Exception): pass
-
-def dateYYYYMMDD(v):
-	if v == 'now':
-		return datetime.datetime.utcnow().date()
-	else:
-		return datetime.datetime.strptime(v, "%Y-%m-%d").date()
-
-def dateYYYYMMDDHHMMSS(v):
-	if v == 'now':
-		return datetime.datetime.utcnow()
-	else:
-		return datetime.datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
-
-def rangeint(v):
-	try:
-		ret = int(v)
-		return (ret,ret)
-	except:
-		pass
-
-	if '-' not in v:
-		raise ValueError("Unrecognized integer range '%s'" % v)
-
-	parts = v.split('-')
-	if len(parts) != 2:
-		raise ValueError("Unrecognized integer range '%s'" % v)
-
-	return (int(parts[0]), int(parts[1]))
-
-def hashfile(f):
-	"""
-	Hash file with path @f.
-	Either call sha256sum command line tool, or implement it directly in python.
-	As I suspect sha256sum is faster I will invoke it through subprocess.
-	"""
-
-	args = ['sha256sum', f]
-	ret = subprocess.run(args, stdout=subprocess.PIPE)
-	return ret.stdout.decode('utf-8').split(' ')[0]
-
-
 class actions:
 	"""
 	Actions performed by the command line.
@@ -552,7 +510,9 @@ class actions:
 
 		vals = p.check(vals, set_absent_as_none=True)
 
-		# TODO: invoke `uname -a` if vals['uname'] is None
+		# Get system info if not provided
+		if vals['uname'] is None:
+			vals['uname'] = getuname()
 
 		d = kls._db_open(args)
 		try:
@@ -833,57 +793,4 @@ class actions:
 			d.commit()
 
 		send_notification(args, ('all',), "write completed to tape=%s and num=%d" % (id_tape,num))
-
-class DataArgsParser:
-	"""
-	Accepts a key=value items from the command line, validates the type, and makes a dictionary.
-		vals = ["model=monkey", "serial=10"]
-		vals = dict([_.split('=',1) for _ in vals])
-		p = DataArgsParser(name) # Name is something useful when throwing exceptions
-		p.add('model', str, required=True, default="ACME")
-		p.add('serial', int, required=True)
-		vals = p.check(vals)
-	"""
-	def __init__(self, name):
-		self.name = name
-		self.parms = []
-		self.keys = []
-
-	def add(self, key, typ, *, required=False, default=None):
-		self.parms.append( {'key': key, 'type': typ, 'required': required, 'default': default} )
-		self.keys.append(key)
-
-	def check(self, vals, set_absent_as_none=False):
-		# Check for required parameters
-		for z in self.parms:
-			if z['required']:
-				if z['key'] in vals: continue
-
-				if 'default' in z and z['default'] is not None:
-					vals[z['key']] = z['default']
-
-				raise PrintHelpException("Data parameter '%s' required for %s, but not provided" % (z['key'], self.name))
-
-		# Check that there are no extras
-		for k,v in vals.items():
-			if k not in self.keys:
-				raise PrintHelpException("Data parameter '%s' not recognized as valid for %s" % (k, self.name))
-
-		# Validate types
-		for z in self.parms:
-			k = z['key']
-
-			# Must not be required if it reaches this point, so skip it
-			if k not in vals:
-				# If want the absent ones set as None, do that now
-				if set_absent_as_none:
-					vals[k] = None
-				continue
-
-			try:
-				vals[k] = z['type']( vals[k] )
-			except:
-				raise PrintHelpException("Data parameter '%s' supposed to be type %s but failed to convert for %s" % (k, z['type'], self.name))
-
-		return vals
 
