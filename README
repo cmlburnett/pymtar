@@ -26,6 +26,9 @@ The sqlite database stores three primary entitied:
 	tar: a collection of files grouped together and written to tape with tar(1)
 	tarfile: an regular file to write to tape
 
+Tapes are identified by a unique serial number, presumably, printed on the cartridge by the manufacturer.
+Optionally, a barcode can be included; the barcode is intended to be the standard tape barcodes but there is no required format for pymtar.
+
 ### Tape Basics ###
 Magnetic tape is a linear access storage medium.
 Tapes are generally written with tar(1) or cpio(1), this library uses tar.
@@ -160,6 +163,13 @@ Invoking pymtar will then write the two tar files to the tape.
 As pymtar writes the tar files, it will update tar.stime and tar.etime in the 001/end/archive.db file.
 The last tape file (3) will be another copy of the 001 directory with 001/end/archive.db reflecting the write times.
 
+Options:
+- Queue all data to multiple tapes first, and then write archive.db to each tape thus each tape contains complete redundant file and SH256 hash data
+- Queue one tape and write it; queue another tape and write it; reuse the same archive.db each time such that subsequent tapes contain
+  all of the data for prior tapes thus providing redundant file and SH256 hash data
+- Queue one tape per archive.db without reuse between tapes to reduce "wasted" space
+
+
 ### Future ###
 Currently, functionality of pymtar is limited as the library is new.
 
@@ -169,4 +179,8 @@ Future plans:
 - Integirity check to verify SHA256 of the on-tape files
 - Support access counters on each tape file to help track which files are accessed the most
 - Enable pymtar to also write the file 0 and end file copy of the database
+- Tape libraries with tape changers
+- Error handling, currently I/O errors are not looked for or handled
+  - Eg, if writing more data than the tape has space for
+- Provide ability to abstract a copy of a tape to have replicants of a tape without entirely copying all of the tar/tarfile data
 
