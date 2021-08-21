@@ -1,0 +1,139 @@
+pymtar -- python magnetic tar
+
+This repository is used to archive files onto magnetic tape.
+It utilizes a sqlite file to store data, which should be written first to the tape, followed by all of the data.
+The database used stores SHA256 values of all files to verify integrity.
+Accessing the database, in the future, will make seeking to the appropriate tape file to extract a specific file easier.
+
+### Installation ###
+Installation is easy
+
+	git clone https://github.com/cmlburnett/pymtar
+	cd pymtar
+	sudo python3 setup.py install
+
+This requires my helper library for sqlite as I was tired of some basic quality of life functions when using sqlite:
+
+	cd ..
+	https://github.com/cmlburnett/sqlitehelper
+	cd sqlitehelper
+	sudo python3 setup.py install
+
+### Description ###
+The sqlite database stores three primary entitied:
+
+	tape: contains metadata information about tapes (model, serial number, purchase date, etc)
+	tar: a collection of files grouped together and written to tape with tar(1)
+	tarfile: an regular file to write to tape
+
+### Tape Basics ###
+Magnetic tape is a linear access storage medium.
+Tapes are generally written with tar(1) or cpio(1), this library uses tar.
+
+A tape consists of a sequence of "files" with a marker at the end of each marker the delineates files.
+A "file" is whatever you want, in this case a single tar file.
+As such, a tape drive doesn't understand files in the typical fileystem perspective and tar provides this for you.
+
+Shell actions to work with tapes:
+
+	export TAPE=/dev/nst0
+	mt rewind
+	tar c /home
+	mt offline
+
+mt is a utility to manipulate the position of a tape.
+tar and mt will assume to use $TAPE if -f not specified 
+This example, rewinds a tape and writes /home to a single tar file as file 0 on the tape drive, and then ejects the tape.
+
+mt actions:
+
+	mt rewind: move the tape head to the start of the tape
+	mt fsf: move the tape head to the next file
+	mt bsf: move the tape head to the previous file
+	mt offline: rewind and eject the tape
+	mt status: will print out the file number, block number, and bit flags at the current head position
+
+It's not quite this simple as bsf moves back to the beginning of the previous file marker on tape.
+For example, if at file=10, block=0 then a bsf will move to file=10, block=-1.
+Repeating bsf will then move to file=9, block=-1.
+To write to file 10, fsf will move to file=10, block=0.
+
+In other words:
+
+	file=0, block=0: start of the tape (file 0)
+	file=0, block=-1: at the start of the file marker after file 0
+	file=1, block=0: start of file 1
+	file=1, block=1000: block 100 of file 1
+	file=1, block=-1: at the start of the file marker after file 1
+	file=2, block=0: start of file 2
+
+So if you were at file=10, block=40 and wanted to go to the start of file 9:
+
+	mt bsf
+	mt bsf
+	mt bsf
+	mt fsf
+
+This moves to file=10, block=0 then file=9, block=-1 then file=8, block=-1 then file=9, block=0.
+
+### pymtar ###
+The goal of this library is to help facilitate writing a full tape from local filesystem data.
+Every file queued into the database is SHA256 hashed so that future tape reads can ensure data is intact.
+This means that queueing in files can take a long time.
+
+To get started:
+
+	python3 -m pymtar -d archive.db new tape manufacturer=ACME model=Q123 gen=LTO8RW sn=123456 barcode=LTO123L8 ptime=1990-12-20
+
+This will create a tape. To create a tar file:
+
+	python3 -m pymtar -d archive.db new tar tape=1 num=1 stime=now etime=now
+	python3 -m pymtar -d archive.db new tar tape=1 num=2 stime=now etime=now
+
+This will create a tar file with at tape file 1 and 2.
+This is intentional as the archive.db should be stored first in file 0.
+
+Once a tape and tar have been created, you can queue files:
+
+	python3 -m pymtar -d archive.db queue tape=1 tar=1 /home/me/docs/*
+	python3 -m pymtar -d archive.db queue tape=1 tar=2 /var/log/*
+
+Each of these will take the files passed in by the shell, hash them, and add to the indicated tar file.
+Currently, pymtar does not glob for files itself so you must explicitly pass it files to add.
+
+Once ready to write to tape, I recommend:
+- Create a directory for your tape number (001 in the example above)
+- Create subdirectories 'start' and 'end'
+- Put archive.db under 001/start/
+- Copy in any shell scripts, etc you might have used to queue files
+- Copy in any other meta data sources about the data
+- Copy in pymtar and all helper libraries to ensure the archive database can be read with the correct version of software
+- Copy in any programs used to access/interpret your data files
+
+Basicaly, this is the metadata for the entirety of the tape.
+Include any and all information you may want to understand the data itself.
+
+Use tar to write this directory to the tape
+
+	export TAPE=/dev/nst0
+	mt rewind
+	tar c 001/
+	cp 001/start/archive.db 001/end/archive.db
+	python3 -m pymtar -d 001/end/archive.db write tape=1 tar=1-2
+	tar c 001/
+
+This will write 001 directory to the start of the tape, which will aid in finding files on the tape and accessing hash data to verify data integrity.
+Invoking pymtar will then write the two tar files to the tape.
+As pymtar writes the tar files, it will update tar.stime and tar.etime in the 001/end/archive.db file.
+The last tape file (3) will be another copy of the 001 directory with 001/end/archive.db reflecting the write times.
+
+### Future ###
+Currently, functionality of pymtar is limited as the library is new.
+
+Future plans:
+- Add support to facilitate searching for files/directories
+- Add support to facilitate extracting specific files/directories
+- Integirity check to verify SHA256 of the on-tape files
+- Support access counters on each tape file to help track which files are accessed the most
+- Enable pymtar to also write the file 0 and end file copy of the database
+
