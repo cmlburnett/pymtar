@@ -34,6 +34,9 @@ from .util import dateYYYYMMDD, dateYYYYMMDDHHMMSS, rangeint, hashfile
 
 
 def send_notification(args, flags, msg):
+	"""
+	Fault-tolerant (if not installed or throws an exception) push notification to update the user.
+	"""
 	# Not configured, cannot notify
 	if pushover is None: return
 
@@ -698,6 +701,10 @@ class actions:
 
 		# Sort by path
 		files = sorted(files, key=lambda _: _['fullpath'])
+		# Check that files are present
+		for fl in files:
+			if not os.path.exists(fl['fullpath']):
+				raise Exception("Could not find file '%s' for tape=%s and tar=%d, aborting" % (fl['fullpath'], id_tape, num))
 
 		# Get the base directory to change working directory to
 		basedir = files[0]['fullpath'][:-(len(files[0]['relpath']))]
