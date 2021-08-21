@@ -10,6 +10,7 @@ import hashlib
 import os
 import subprocess
 import tempfile
+import time
 
 # Installed libraries
 import sqlite3
@@ -733,7 +734,7 @@ class actions:
 		# set start time
 		d.begin()
 		n = db._now()
-		d.tar.update({'stime': n}, {'rowid': tar['rowid']})
+		d.tar.update({'rowid': tar['rowid']}, {'stime': n})
 		print("Start: %s" % n)
 		d.commit()
 
@@ -769,7 +770,7 @@ class actions:
 			# set end time
 			d.begin()
 			n = db._now()
-			d.tar.update({'etime': n}, {'rowid': tar['rowid']})
+			d.tar.update({'rowid': tar['rowid']}, {'etime': n})
 			print("End: %s" % n)
 			d.commit()
 
