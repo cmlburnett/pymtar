@@ -53,6 +53,32 @@ def send_notification(args, flags, msg):
 	finally:
 		print("notify: %s" % msg)
 
+def send_notification_queue_start(args, vals):
+	send_notification(args, ('all','limited'), "starting queue of %d files to tape=%s and num=%d" % (num_files, vals['tape'], vals['tar']))
+
+def send_notification_queue_step(args, x, num_files, id_tape, num):
+	send_notification(args, ('all',), "queue %d files of %d done to tape=%s and num=%d" % (x,num_files,id_tape,num))
+
+def send_notification_queue_done(args, id_tape, num):
+	send_notification(args, ('all','limited'), "queue completed to tape=%s and num=%d" % (id_tape,num))
+
+def send_notification_write_start(args, vals):
+	if vals['tar'][0] == vals['tar'][1]:
+		send_notification(args, ('all','limited'), "starting write to tape=%s and num=%d" % (vals['tape'], vals['tar'][0]))
+	else:
+		send_notification(args, ('all','limited'), "starting write to tape=%s and num=%d-%d" % (vals['tape'], vals['tar'][0], vals['tar'][1]))
+
+def send_notification_write_done(args, vals):
+	if vals['tar'][0] == vals['tar'][1]:
+		send_notification(args, ('limited','all'), "write completed to tape=%s and num=%d" % (vals['tape'],vals['tar'][0]))
+	else:
+		send_notification(args, ('limited','all'), "write completed to tape=%s and num=%d-%d" % (vals['tape'],vals['tar'][0], vals['tar'][1]))
+
+def send_notification_tar_done(args, id_tape, num):
+	send_notification(args, ('all',), "write completed to tape=%s and num=%d" % (id_tape,num))
+
+
+
 class db(SH):
 	"""DB schema"""
 
@@ -588,7 +614,7 @@ class actions:
 			num_10percent = 100
 
 		# Send start notification
-		send_notification(args, ('all','limited'), "starting queue of %d files to tape=%s and num=%d" % (num_files, vals['tape'], vals['tar']))
+		send_notification_queue_start(args, num_files, vals)
 
 		# Iterate other all of the files
 		for x,fl in enumerate(files):
@@ -620,12 +646,12 @@ class actions:
 
 				# Send notification
 				if (x+1) % num_10percent == 0:
-					send_notification(args, ('all',), "queue %d files of %d done to tape=%s and num=%d" % ((x+1),num_files,id_tape,num))
+					send_notification_queue_step(args, x+1,num_files,id_tape,num)
 
 		# TODO: ensure all files in the same tar have the same base directory
 
 		# Send completion notification
-		send_notification(args, ('all','limited'), "queue completed to tape=%s and num=%d" % (id_tape,num))
+		send_notification_queue_done(args, id_tape, num)
 
 	@classmethod
 	def action_write(kls, args):
@@ -659,22 +685,18 @@ class actions:
 		print("Tape: SN=%s, barcode=%s" % (tape['sn'], tape['barcode']))
 
 		# Send start notification
-		if vals['tar'][0] == vals['tar'][1]:
-			send_notification(args, ('all','limited'), "starting write to tape=%s and num=%d" % (vals['tape'], vals['tar'][0]))
-		else:
-			send_notification(args, ('all','limited'), "starting write to tape=%s and num=%d-%d" % (vals['tape'], vals['tar'][0], vals['tar'][1]))
+		send_notification_write_start(args, vals)
 
 		# Iterate over tar numbers
 		for num in range(vals['tar'][0], vals['tar'][1]+1):
 			print("-"*80)
 			print("Tar: num=%d" % (num))
 
+			# 2-4)
 			kls._action_write_num(args, vals, id_tape, num, d)
 
-		if vals['tar'][0] == vals['tar'][1]:
-			send_notification(args, ('limited','all'), "write completed to tape=%s and num=%d" % (vals['tape'],vals['tar'][0]))
-		else:
-			send_notification(args, ('limited','all'), "write completed to tape=%s and num=%d-%d" % (vals['tape'],vals['tar'][0], vals['tar'][1]))
+		# Send done notification
+		send_notification_write_done(args, vals)
 
 	@classmethod
 	def _action_write_num(kls, args, vals, id_tape, num, d):
@@ -803,5 +825,6 @@ class actions:
 			print("End: %s" % n)
 			d.commit()
 
-		send_notification(args, ('all',), "write completed to tape=%s and num=%d" % (id_tape,num))
+		# Send notification of finishing a file
+		send_notification_tar_done(args, id_tape, num)
 
