@@ -53,7 +53,7 @@ def send_notification(args, flags, msg):
 	finally:
 		print("notify: %s" % msg)
 
-def send_notification_queue_start(args, vals):
+def send_notification_queue_start(args, num_files, vals):
 	send_notification(args, ('all','limited'), "starting queue of %d files to tape=%s and num=%d" % (num_files, vals['tape'], vals['tar']))
 
 def send_notification_queue_step(args, x, num_files, id_tape, num):
@@ -646,12 +646,12 @@ class actions:
 
 				# Send notification
 				if (x+1) % num_10percent == 0:
-					send_notification_queue_step(args, x+1,num_files,id_tape,num)
+					send_notification_queue_step(args, x+1,num_files,vals['tape'],vals['tar'])
 
 		# TODO: ensure all files in the same tar have the same base directory
 
 		# Send completion notification
-		send_notification_queue_done(args, id_tape, num)
+		send_notification_queue_done(args, vals['tape'], vals['tar'])
 
 	@classmethod
 	def action_write(kls, args):
@@ -783,10 +783,10 @@ class actions:
 			raise Exception("Failed to seek tape: desired file number %d, was at %s and now at %s" % (num, ret, ret2))
 
 		# set start time
-		d.begin()
 		n = db._now()
-		d.tar.update({'rowid': tar['rowid']}, {'stime': n})
 		print("Start: %s" % n)
+		d.begin()
+		d.tar.update({'rowid': tar['rowid']}, {'stime': n})
 		d.commit()
 
 		try:
@@ -819,10 +819,10 @@ class actions:
 
 		finally:
 			# set end time
-			d.begin()
 			n = db._now()
-			d.tar.update({'rowid': tar['rowid']}, {'etime': n})
 			print("End: %s" % n)
+			d.begin()
+			d.tar.update({'rowid': tar['rowid']}, {'etime': n})
 			d.commit()
 
 		# Send notification of finishing a file

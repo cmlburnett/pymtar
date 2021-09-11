@@ -183,4 +183,7 @@ Future plans:
 - Error handling, currently I/O errors are not looked for or handled
   - Eg, if writing more data than the tape has space for
 - Provide ability to abstract a copy of a tape to have replicants of a tape without entirely copying all of the tar/tarfile data
+- Incremental backups
+  - Queue new files to a new tar
+  - Queue modified files (using SHA256) to a new tar
 
