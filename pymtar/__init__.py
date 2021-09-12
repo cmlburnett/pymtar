@@ -6,6 +6,7 @@ Stores file data in a sqlite database for rapid localization of files on a tape 
 
 # Global libraries
 import datetime
+import fnmatch
 import os
 import subprocess
 import sys
@@ -221,6 +222,13 @@ class db(SH):
 		self.commit()
 		return ret
 
+	def get_tar(self, id_tar):
+		res = self.tar.select('*', '`rowid`=?', [id_tar])
+		if res is None:
+			return None
+		else:
+			return res.fetchone()
+
 	# -------------------------------------------------------------------------
 	# -------------------------------------------------------------------------
 	# Tar files
@@ -275,6 +283,16 @@ class db(SH):
 		self.commit()
 		return ret
 
+	def find_tarfiles_by_name(self, pattern):
+		res = self.tarfile.select('*', None, None, '`id_tape` asc, `id_tar` asc')
+		for row in res:
+			path = row['fullpath']
+			parts = path.split('/')
+			if fnmatch.fnmatch(parts[-1], pattern):
+				row = dict(row)
+				tar_row = self.get_tar(row['id_tar'])
+				row['tar'] = dict(tar_row)
+				yield row
 
 class mt:
 	"""
@@ -396,6 +414,9 @@ class actions:
 		elif args.action[1] == 'tape.sn':
 			kls.action_find_tape_sn(args, args.action[2])
 
+		elif args.action[1] == 'tarfile.name':
+			kls.action_find_tarfiles_name(args, args.action[2])
+
 		else:
 			raise PrintHelpException("Unrecognized find command: %s" % args.action[1])
 
@@ -408,6 +429,14 @@ class actions:
 	def action_find_tape_sn(kls, args, sn):
 		d = kls._db_open(args)
 		print(d.find_tape_by_sn(sn))
+
+	@classmethod
+	def action_find_tarfiles_name(kls, args, name):
+		d = kls._db_open(args)
+		rows = d.find_tarfiles_by_name(name)
+		print("TAPE.TAR: FULLPATH")
+		for row in rows:
+			print("{id_tape}.{tar[num]}: {fullpath}".format(**row))
 
 	# -------------------------------------------------------------------------
 	# -------------------------------------------------------------------------
@@ -653,6 +682,8 @@ class actions:
 		# Send completion notification
 		send_notification_queue_done(args, vals['tape'], vals['tar'])
 
+	# -------------------------------------------------------------------------
+	# -------------------------------------------------------------------------
 	@classmethod
 	def action_write(kls, args):
 		# 1) Find tape, find tar, find files

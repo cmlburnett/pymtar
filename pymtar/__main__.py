@@ -35,6 +35,7 @@ def main():
   Actions help:
     find tape.barcode   Find tapes by barcode
     find tape.sn        Find tapes by serial number
+    find tarfile.name   Find tarfiles by name using fnmatch (case-insensitive)
     list tapes          List all tapes
     list tars           List all tars
                             tape          Tape rowid, serial number, or barcode to limit search by
