@@ -286,8 +286,12 @@ class db(SH):
 	def find_tarfiles_by_name(self, pattern):
 		res = self.tarfile.select('*', None, None, '`id_tape` asc, `id_tar` asc')
 		for row in res:
+			# Get the full path
 			path = row['fullpath']
+			# And get just the filename
 			parts = path.split('/')
+
+			# Match pattern on just the file name itself, not full path
 			if fnmatch.fnmatch(parts[-1], pattern):
 				row = dict(row)
 				tar_row = self.get_tar(row['id_tar'])
@@ -398,6 +402,7 @@ class actions:
 		acts['new'] = kls.action_new
 		acts['queue'] = kls.action_queue
 		acts['write'] = kls.action_write
+		acts['extract'] = kls.action_extract
 
 		if args.action[0] in acts:
 			acts[ args.action[0] ](args)
@@ -858,4 +863,61 @@ class actions:
 
 		# Send notification of finishing a file
 		send_notification_tar_done(args, id_tape, num)
+
+	# -------------------------------------------------------------------------
+	# -------------------------------------------------------------------------
+	@classmethod
+	def action_extract(kls, args):
+		vals = dict([_.split('=',1) for _ in args.action[1:]])
+
+		# Parse paramaters
+		p = DataArgsParser('extract')
+		p.add('tape', int, required=False)
+		p.add('tar', int, required=False)
+		p.add('fullpath', str, required=False)
+		p.add('name', str, required=False)
+
+		vals = p.check(vals)
+
+		d = kls._db_open(args)
+
+		# Filter by tar.num, need to get tar info to get num
+		if 'tape' in vals and 'tar' in vals:
+			tar = d.find_tars_by_tape_num(vals['tape'], vals['tar'])
+			vals['tar'] = tar['num']
+
+		matches = []
+
+		if 'fullpath' in vals and 'name' in vals:
+			raise PrintHelpException("Must provide only one of fullpath or name to extract to match files")
+
+		elif 'fullpath' in vals:
+			raise NotImplementedError
+
+		elif 'name' in vals:
+			rows = d.find_tarfiles_by_name(vals['name'])
+			for row in rows:
+				if 'tape' in vals and row['id_tape'] != vals['tape']: continue
+				if 'tar' in vals and row['tar']['num'] != vals['tar']: continue
+				matches.append(row)
+
+		else:
+			raise PrintHelpException("Must provide fullpath or name to extract to match files")
+
+		# TODO:
+		# 1) Query user for base path
+		# 2) Ask if full path, relative path, or files-only should be extracted
+		#      fullpath = the entire full path is replicated on base path
+		#      relpath = the relative path is replicated on base path
+		#      files-only = files are put directly into base path (risk of duplicate file names)
+		# 3) Make directory structure
+		# 4) Split matches by tape
+		# 5) For each tape, ask user to insert tape
+		# 5a) mt status shouldn't be (-1,-1,-1)
+		# 5b) mt fsf to each tar
+		# 5c) Invoke tar to extract files
+		# 5d) Increment access counter
+		# 6) Hash files and match in database
+
+		raise NotImplementedError
 

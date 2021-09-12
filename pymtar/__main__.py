@@ -35,7 +35,7 @@ def main():
   Actions help:
     find tape.barcode   Find tapes by barcode
     find tape.sn        Find tapes by serial number
-    find tarfile.name   Find tarfiles by name using fnmatch (case-insensitive)
+    find tarfile.name   Find tarfiles by name using fnmatch (case-insensitive) on just the file name
     list tapes          List all tapes
     list tars           List all tars
                             tape          Tape rowid, serial number, or barcode to limit search by
@@ -73,6 +73,16 @@ def main():
     write               Write a tar file to the tape drive
                             tape          Tape identifier
                             tar           Tar file to write
+    extract             Extract files from a tape
+                            tape          Tape identifier (optional to limit search)
+                            tar           Tar file to read from (optional to limit search)
+                            fullpath      fnmatch on full path (exclusive with 'name')
+                            name          fnmatch on just the filename (exclusive with 'fullpath')
+   verify               Verify contents of a tape without extracting
+                            tape          Tape identifier (optional to limit search)
+                            tar           Tar file to read from (optional to limit search)
+                            fullpath      fnmatch on full path (exclusive with 'name')
+                            name          fnmatch on just the filename (exclusive with 'fullpath')
 """
 
 	args = p.parse_args()
