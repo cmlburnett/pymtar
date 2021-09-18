@@ -70,6 +70,7 @@ def main():
                             tape          Tape identifier
                             tar           Tar file to add files to
                             basedir       Directory path to truncate off for the relative path to supply to tar
+                            forceupdate   If file is known, rehash and update database (pass "1" or "true" (case-insensitive) to enable)
                             *             List of files to add
     write               Write a tar file to the tape drive
                             tape          Tape identifier

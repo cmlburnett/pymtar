@@ -621,7 +621,17 @@ class actions:
 	# -------------------------------------------------------------------------
 	@classmethod
 	def action_queue(kls, args):
-		vals = args.action[1:4]
+		vals = []
+		for a in args.action[1:]:
+			if a.startswith("tape="): vals.append(a)
+			elif a.startswith("tar="): vals.append(a)
+			elif a.startswith("basedir="): vals.append(a)
+			elif a.startswith("forceupdate="): vals.append(a)
+			else:
+				continue
+
+		files = args.action[1+len(vals):]
+
 		# Split ['foo=bar', 'baz=bat'] into [['foo','bar'], ['baz','bat']]
 		vals = dict([_.split('=',1) for _ in vals])
 
@@ -630,11 +640,27 @@ class actions:
 		p.add('tape', str, required=True)
 		p.add('tar', int, required=True)
 		p.add('basedir', str, required=True)
+		p.add('forceupdate', str, required=False)
 		vals = p.check(vals, set_absent_as_none=True)
 
-		d = kls._db_open(args)
+		forceupdate = False
+		if 'forceupdate' in vals and vals['forceupdate'] is not None:
+			# Enable
+			if vals['forceupdate'].strip().lower() == 'true':
+				forceupdate = True
+			elif vals['forceupdate'].strip() == '1':
+				forceupdate = True
 
-		files = args.action[4:]
+			# Provide options to explicitly disable
+			elif vals['forceupdate'].strip().lower() == 'false':
+				forceupdate = False
+			elif vals['forceupdate'].strip() == '0':
+				forceupdate = False
+
+			else:
+				raise PrintHelpException("Must provie 1 or true to forceupdate, unrecognized value '%s'" % vals['forceupdate'])
+
+		d = kls._db_open(args)
 
 		if len(files) == 1 and files[0] == '-':
 			files = sys.stdin.readlines()
@@ -665,10 +691,29 @@ class actions:
 				raise Exception("Should not reach this point as base dir was already checked: %s" % ([fl, vals['basedir'], z]))
 
 			# See if file is already queued
-			res = d.tarfile.select('rowid', 'fullpath=?', [fl])
+			res = d.tarfile.select(['rowid','sha256'], 'fullpath=?', [fl])
 			rows = [dict(_) for _ in res]
 			if len(rows):
-				print("Skipping: %s" % fl)
+				if not forceupdate:
+					print("Skipping: %s" % fl)
+				else:
+
+					oldh = rows[0]['sha256']
+
+					h = hashfile(fl)
+					sz = os.path.getsize(fl)
+					fname = os.path.basename(fl)
+
+					if oldh == h:
+						print("Unchanged: %s" % fl)
+						continue
+
+					print("Rehashing: %s (%s, %s)" % (fl, oldh, h))
+					#print("\tOld: %s\t\tNew: %s" % (oldh,h))
+					d.begin()
+					d.tarfile.update({"rowid": rows[0]['rowid']}, {"sha256": h, "sz": sz})
+					d.commit()
+
 			else:
 				print("Adding:   %s" % fl)
 
