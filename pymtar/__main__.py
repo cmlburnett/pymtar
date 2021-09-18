@@ -69,6 +69,7 @@ def main():
     queue               Add a bunch of files to a tar file to queue up for writing
                             tape          Tape identifier
                             tar           Tar file to add files to
+                            basedir       Directory path to truncate off for the relative path to supply to tar
                             *             List of files to add
     write               Write a tar file to the tape drive
                             tape          Tape identifier
@@ -78,7 +79,7 @@ def main():
                             tar           Tar file to read from (optional to limit search)
                             fullpath      fnmatch on full path (exclusive with 'name')
                             name          fnmatch on just the filename (exclusive with 'fullpath')
-   verify               Verify contents of a tape without extracting
+    verify              Verify contents of a tape without extracting
                             tape          Tape identifier (optional to limit search)
                             tar           Tar file to read from (optional to limit search)
                             fullpath      fnmatch on full path (exclusive with 'name')
